@@ -1,12 +1,12 @@
 const NUM_REGISTERS = 16;
 const FLAG_REGISTER = 0xF;
 const INIT_HERTZ = 60; // starting hertz for timer registers
-const HEIGHT = 320; // display resolution height
-const WIDTH = 640; // display resolution width
+const HEIGHT = 32; // display resolution height
+const WIDTH = 64; // display resolution width
 const PROGRAM_START = 0x200;
 const MEMORY_LOCATIONS = 0x1000;
 const BEEP_SOUND_FILE = "./audio/beep-06.mp3"
-const SPRITE_WIDTH = 80;
+const SPRITE_WIDTH = 8;
 
 const INPUT_MAP = {
   "1": 1, "2": 2, "3": 4, "4": 0xC,
@@ -56,6 +56,7 @@ class CPU {
     this.pc = 0; // program counter
     this.delay_timer = INIT_HERTZ;
     this.sound_timer = INIT_HERTZ;
+    this.interval = null;
 
   }
 
@@ -71,17 +72,25 @@ class CPU {
     for (let i = 0; i < rom.length; i++) {
       this.memory[pos++] = rom[i];
     }
+  }
+
+  async load_and_run(rom) {
+    return new Promise((resolve) => {
+      this.load_rom(rom)
+      this.interval = setInterval(async () => {
+        await this.cycle()
+      }, 10);
+      resolve();
+    })
+
 
   }
 
-  async run() {
-    let opcode, addr, x, y, c, ans, msb, lsb, n, key;
-    while (true) {
+  async cycle() {
+    return new Promise(async (resolve) => {
+      let opcode, addr, x, y, c, ans, msb, lsb, n, key;
       opcode = this.memory[this.pc] << 8 | this.memory[this.pc + 1];
       console.log(opcode)
-      if (opcode === 0) {
-        break;
-      }
       switch (opcode & 0xF000) {
         case 0x0000:
           switch (opcode & 0x0F00) {
@@ -255,7 +264,7 @@ class CPU {
             this.registers[x],
             this.registers[y],
             SPRITE_WIDTH,
-            n * 10
+            n
           )
           this.pc += 2;
           break;
@@ -349,11 +358,17 @@ class CPU {
           playSound()
         }
       }
-    }
+      resolve();
+    })
+
   }
+
 
   reset() {
     this.clear_display();
+    if (this.interval !== null) {
+      clearInterval(this.interval);
+    }
     this.memory = new Uint8Array(MEMORY_LOCATIONS);
     this.stack = new Uint16Array(16);
 
@@ -374,9 +389,13 @@ document.addEventListener("DOMContentLoaded", async function () {
     console.log(keyPressed)
   })
   const fileInput = document.getElementById("romFileInput");
-
+  const resetBtn = document.getElementById("resetBtn");
   const canvas = document.getElementById("display") || null;
   const cpu = new CPU(canvas);
+
+  resetBtn.addEventListener("click", function () {
+    cpu.reset();
+  })
 
   fileInput.addEventListener("input", function (event) {
     // console.log(fileInput.value);
@@ -385,8 +404,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       const reader = new FileReader();
       reader.onload = async function (e) {
         const bytes = new Uint8Array(e.target.result);
-        cpu.load_rom(bytes);
-        await cpu.run();
+        await cpu.load_and_run(bytes)
       }
       reader.readAsArrayBuffer(file);
     }
