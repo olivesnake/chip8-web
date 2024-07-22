@@ -10,6 +10,8 @@ const MEMORY_SIZE = 0x1000;
 const BEEP_SOUND_FILE = "./audio/beep-06.mp3"
 const SPRITE_WIDTH = 8;
 const SCALE = 10;
+const INTERVAL = Math.floor(1000 / 60);
+// const INTERVAL = 500;
 
 
 const INPUT_MAP = {
@@ -70,7 +72,65 @@ const OFF = 0;
 
 class CPU {
   constructor(canvas) {
-    this.opcode_table = [];
+    /* setup function pointer table */
+    this.table = new Array(0xF + 1);
+    // opcodes starting with 0
+    this.table0 = new Array(0xF);
+    this.table8 = new Array(0xF);
+    this.tableE = new Array(0xF);
+    this.tableF = new Array(0x66);
+
+    let i;
+    for (i = 0; i <= 0xE; i++) {
+      this.table0[i] = this.op_null;
+      this.table8[i] = this.op_null;
+      this.tableE[i] = this.op_null;
+    }
+    this.table0[0x0] = this.op_00e0;
+    this.table0[0xE] = this.op_00ee;
+    // opcodes starting with 8
+    this.table8[0] = this.op_8xy0;
+    this.table8[1] = this.op_8xy1;
+    this.table8[2] = this.op_8xy2;
+    this.table8[3] = this.op_8xy3;
+    this.table8[4] = this.op_8xy4;
+    this.table8[5] = this.op_8xy5;
+    this.table8[6] = this.op_8xy6;
+    this.table8[7] = this.op_8xy7;
+    this.table8[0xE] = this.op_8xye;
+    // opcodes starting with E
+    this.tableE[0xe] = this.op_ex9e;
+    this.tableE[0x1] = this.op_exa1;
+    // opcodes starting with F
+    for (i = 0; i <= 0x65; i++) {
+      this.tableF[i] = this.op_null;
+    }
+    this.tableF[0x07] = this.op_fx07;
+    this.tableF[0x0A] = this.op_fx0a;
+    this.tableF[0x15] = this.op_fx15;
+    this.tableF[0x18] = this.op_fx18;
+    this.tableF[0x1E] = this.op_fx1e;
+    this.tableF[0x29] = this.op_fx29;
+    this.tableF[0x33] = this.op_fx33;
+    this.tableF[0x55] = this.op_fx55;
+    this.tableF[0x65] = this.op_fx65;
+    /* set pointers */
+    this.table[0] = this.op_table0;
+    this.table[1] = this.op_1nnn;
+    this.table[2] = this.op_2nnn;
+    this.table[3] = this.op_3xnn;
+    this.table[4] = this.op_4xnn;
+    this.table[5] = this.op_5xy0;
+    this.table[6] = this.op_6xnn;
+    this.table[7] = this.op_7xnn;
+    this.table[8] = this.op_table8;
+    this.table[9] = this.op_9xy0;
+    this.table[0xA] = this.op_annn;
+    this.table[0xB] = this.op_bnnn;
+    this.table[0xC] = this.op_cxnn;
+    this.table[0xD] = this.op_dxyn;
+    this.table[0xE] = this.op_tableE;
+    this.table[0xF] = this.op_tableF;
     this.canvas = canvas
     this.ctx = this.canvas.getContext("2d");
     this.ctx.fillStyle = "black";
@@ -91,6 +151,290 @@ class CPU {
     this.interval = null;
     this.opcode = 0; // store current opcode
     this.display = new Uint32Array(WIDTH * HEIGHT);
+
+
+  }
+
+  op_table0() {
+    this.table0[this.opcode & 0x000F]();
+  }
+
+  op_table8() {
+    this.table8[this.opcode & 0x000F]();
+  }
+
+  op_tableE() {
+    this.tableE[this.opcode & 0x000F]();
+  }
+
+  op_tableF() {
+    this.tableF[this.opcode & 0x00FF]();
+  }
+
+  op_null() {
+  }
+
+  op_00e0() {
+    for (let i = 0; i < this.display.length; i++) {
+      this.display[i] = 0;
+    }
+  }
+
+  op_00ee() {
+    this.pc = this.stack[--this.sp];
+  }
+
+  op_1nnn() {
+    this.pc = this.opcode & 0x0fff; // jmp to address
+  }
+
+  op_2nnn() {
+    // call subroutine at nnn
+    let addr = this.opcode & 0x0FFF;
+    this.stack[this.sp] = this.pc; // push return address to stack
+    ++this.sp;
+    this.pc = addr;
+  }
+
+  op_3xnn() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let c = this.opcode & 0x0FF;
+    if (this.registers[x] === c) {
+      this.pc += 2;
+    }
+  }
+
+  op_4xnn() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let c = this.opcode & 0x0FF;
+    if (this.registers[x] !== c) {
+      this.pc += 2;
+    }
+  }
+
+  op_5xy0() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let y = (this.opcode & 0x00F0) >> 4;
+    if (this.registers[x] === this.registers[y]) {
+      this.pc += 2;
+    }
+  }
+
+  op_6xnn() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    this.registers[x] = this.opcode & 0x0FF;
+  }
+
+  op_7xnn() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let c = this.opcode & 0x0FF;
+    this.registers[x] += c;
+  }
+
+  op_8xy0() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let y = (this.opcode & 0x00F0) >> 4;
+    this.registers[x] = this.registers[y];
+  }
+
+  op_8xy1() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let y = (this.opcode & 0x00F0) >> 4;
+    this.registers[x] |= this.registers[y];
+  }
+
+  op_8xy2() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let y = (this.opcode & 0x00F0) >> 4;
+    this.registers[x] &= this.registers[y];
+  }
+
+  op_8xy3() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let y = (this.opcode & 0x00F0) >> 4;
+    this.registers[x] ^= this.registers[y];
+  }
+
+  op_8xy4() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let y = (this.opcode & 0x00F0) >> 4;
+    let ans = Number(this.registers[x]) + Number(this.registers[y]);
+    // check for overflow
+    if (ans > 255) {
+      this.registers[FLAG_REGISTER] = 1;
+    } else {
+      this.registers[FLAG_REGISTER] = 0;
+    }
+    this.registers[x] = ans & 0xFF;
+  }
+
+  op_8xy5() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let y = (this.opcode & 0x00F0) >> 4;
+
+    // check for underflow
+    if (this.registers[x] > this.registers[y]) {
+      this.registers[FLAG_REGISTER] = 1;
+    } else {
+      this.registers[FLAG_REGISTER] = 0;
+    }
+    this.registers[x] -= this.registers[y];
+  }
+
+  op_8xy6() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    this.registers[FLAG_REGISTER] = this.registers[x] & 1;
+    this.registers[x] >>= 1;
+  }
+
+  op_8xy7() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let y = (this.opcode & 0x00F0) >> 4;
+    // check for underflow
+    if (this.registers[y] > this.registers[x]) {
+      this.registers[FLAG_REGISTER] = 1;
+    } else {
+      this.registers[FLAG_REGISTER] = 0;
+    }
+    this.registers[x] = this.registers[y] - this.registers[x];
+  }
+
+  op_8xye() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    this.registers[FLAG_REGISTER] = (this.registers[x] & 0x80) >> 7;
+    this.registers[x] <<= 1;
+  }
+
+  op_9xy0() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let y = (this.opcode & 0x00F0) >> 4;
+    if (this.registers[x] !== this.registers[y]) {
+      this.pc += 2;
+    }
+
+  }
+
+  op_annn() {
+    this.I = (this.opcode & 0x0FFF);
+  }
+
+  op_bnnn() {
+    this.pc = this.registers[0] + (this.opcode & 0x0FFF);
+  }
+
+  op_cxnn() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let c = this.opcode & 0x0FF;
+    this.registers[x] = rand(255) & c;
+  }
+
+  op_dxyn() {
+    let x = this.registers[(this.opcode & 0x0F00) >> 8];
+    let y = this.registers[(this.opcode & 0x00F0) >> 4];
+    let height = this.opcode & 0x000F;
+
+    let row, col, byte, pixel;
+
+
+    this.registers[FLAG_REGISTER] = 0;
+
+
+    // update pixels
+    for (row = 0; row < height; ++row) {
+      byte = this.memory[this.I + row]
+      for (col = 0; col < SPRITE_WIDTH; ++col) {
+        pixel = this.display[(y + row) * WIDTH + (x + col)];
+        // sprite pixel is on
+        if ((byte & (0x80 >> col)) !== 0) {
+          // check for collision
+          if (pixel === ON) {
+            this.registers[FLAG_REGISTER] = 1;
+          }
+          this.display[(y + row) * WIDTH + (x + col)] ^= ON;
+        }
+
+      }
+    }
+    // clear screen
+    this.ctx.fillStyle = "black";
+    this.ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.scale(SCALE, SCALE);
+
+    // draw pixels
+    for (let i = 0; i < this.display.length; i++) {
+      if (this.display[i] !== 0) {
+        this.ctx.fillStyle = 'white';
+        this.ctx.fillRect(i % WIDTH, Math.floor(i / WIDTH), 1, 1);
+      }
+    }
+  }
+
+  op_ex9e() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    if (this.registers[x] === keyPressed) {
+      this.pc += 2;
+    }
+  }
+
+  op_exa1() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    if (this.registers[x] !== keyPressed) {
+      this.pc += 2;
+    }
+  }
+
+  op_fx07() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    this.registers[x] = this.delay_timer;
+  }
+
+  op_fx0a() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    this.registers[x] = INPUT_MAP[keyPressed];
+  }
+
+  op_fx15() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    this.delay_timer = this.registers[x];
+  }
+
+  op_fx18() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    this.sound_timer = this.registers[x];
+  }
+
+  op_fx1e() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    this.I += this.registers[x];
+  }
+
+  op_fx29() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    this.I = FONTS_START + (FONT_LEN * this.registers[x]);
+  }
+
+  op_fx33() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    let val = this.registers[x];
+    for (let offset = 2; offset >= 0; offset--) {
+      this.memory[this.I + offset] = val % 10;
+      val = Math.floor(val / 10);
+    }
+  }
+
+  op_fx55() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    for (let i = 0; i <= this.registers[x]; i++) {
+      this.memory[this.I + i] = this.registers[i];
+    }
+  }
+
+  op_fx65() {
+    let x = (this.opcode & 0x0F00) >> 8;
+    for (let i = 0; i <= this.registers[x]; i++) {
+      this.registers[i] = this.memory[this.I + i];
+    }
 
   }
 
@@ -113,35 +457,56 @@ class CPU {
 
   async load_and_run(rom) {
     return new Promise((resolve) => {
-      this.load_rom(rom)
+      this.load_rom(rom);
       this.interval = setInterval(async () => {
         await this.cycle()
-        this.update()
-      }, Math.floor(1000 / 60));
+      }, INTERVAL);
+
       resolve();
     })
 
 
   }
 
-  update() {
-  }
 
-  op_00e0() {
-    for (let i = 0; i < this.display.length; i++) {
-      this.display[i] = 0;
-    }
-  }
+  async cycle2() {
+    return new Promise((resolve) => {
+      this.opcode = this.memory[this.pc] << 8 | this.memory[this.pc + 1];
+      // execute
+      this.pc += 2;
+      console.log(`opcode: ${this.opcode.toString(16).padStart(4, '0')}`);
+      try {
+        this.table[(this.opcode & 0xF000) >> 12]();
+      } catch (err) {
+        console.log(`an error occurred: ${err}`);
+      }
 
-  op_00ee() {
-    this.pc = this.stack[--this.sp];
+      if (this.delay_timer > 0) {
+        this.delay_timer--;
+      }
+      if (this.sound_timer > 0) {
+        this.sound_timer--;
+        if (this.sound_timer === 1) {
+          playSound()
+        }
+      }
+
+      resolve();
+    })
+
   }
 
   async cycle() {
     return new Promise(async (resolve) => {
       let opcode, addr, x, y, c, ans, msb, lsb, height, key;
+      // fetch
       opcode = this.memory[this.pc] << 8 | this.memory[this.pc + 1];
-      this.opcode = opcode;
+      this.opcode = this.memory[this.pc] << 8 | this.memory[this.pc + 1];
+      // execute
+      this.pc += 2;
+      // this.table[(this.opcode & 0xF000) >> 12]();
+
+
       switch (opcode & 0xF000) {
         case 0x0000:
           switch (opcode & 0x0F00) {
@@ -152,275 +517,133 @@ class CPU {
                   break
                 case 0: // return from subroutine
                   this.op_00e0();
-                  this.pc += 2;
                   break
                 default:
-                  console.log(`unrecognized opcode`)
+                  this.op_null();
                   break;
               }
               break;
             default:
-              console.log(`unrecognized opcode: ${opcode}`);
+              this.op_null();
               break
           }
           break;
         case 0x1000: // jump to address
-          addr = opcode & 0x0FFF;
-          this.pc = addr;
+          this.op_1nnn();
           break;
         case 0x2000: // call subroutine at address
-          this.pc += 2;
-          addr = opcode & 0x0FFF;
-          this.stack[this.sp] = this.pc; // push return address to stack
-          ++this.sp;
-          this.pc = addr;
+          this.op_2nnn();
           break;
         case 0x3000: // skip next instruction if Vx = NN
-          x = (opcode & 0x0F00) >> 8;
-          c = opcode & 0x0FF;
-          this.pc += (this.registers[x] === c) ? 4 : 2;
+          this.op_3xnn();
           break;
         case 0x4000:  // skip next instruction if Vx != NN
-          x = (opcode & 0x0F00) >> 8;
-          c = opcode & 0x0FF;
-          this.pc += (this.registers[x] !== c) ? 4 : 2;
+          this.op_4xnn();
           break;
         case 0x5000:  // skip next instruction if Vx == Vy
-          x = (opcode & 0x0F00) >> 8;
-          y = (opcode & 0x00F0) >> 4;
-          this.pc += (this.registers[x] === this.registers[y]) ? 4 : 2;
+          this.op_5xy0();
           break;
         case 0x6000:
-          x = (opcode & 0x0F00) >> 8;
-          c = opcode & 0x0FF;
-          this.registers[x] = c;
-          this.pc += 2;
+          this.op_6xnn();
           break;
         case 0x7000:
-          x = (opcode & 0x0F00) >> 8;
-          c = opcode & 0x0FF;
-          this.registers[x] += c;
-          this.pc += 2;
+          this.op_7xnn();
           break;
         case 0x8000:
           switch (opcode & 0x000F) {
             case 0:
-              x = (opcode & 0x0F00) >> 8;
-              y = (opcode & 0x00F0) >> 4;
-              this.registers[x] = this.registers[y];
-              this.pc += 2;
+              this.op_8xy0();
               break
             case 1:
-              x = (opcode & 0x0F00) >> 8;
-              y = (opcode & 0x00F0) >> 4;
-              this.registers[x] |= this.registers[y];
-              this.pc += 2;
+              this.op_8xy1();
               break;
             case 2:
-              x = (opcode & 0x0F00) >> 8;
-              y = (opcode & 0x00F0) >> 4;
-              this.registers[x] &= this.registers[y];
-              this.pc += 2;
+              this.op_8xy2();
               break
             case 3:
-              x = (opcode & 0x0F00) >> 8;
-              y = (opcode & 0x00F0) >> 4;
-              this.registers[x] ^= this.registers[y];
-              this.pc += 2;
+              this.op_8xy3();
               break;
             case 4:
-              x = (opcode & 0x0F00) >> 8;
-              y = (opcode & 0x00F0) >> 4;
-              ans = Number(this.registers[x]) + Number(this.registers[y]);
-              // check for overflow
-              if (ans > 255) {
-                this.registers[FLAG_REGISTER] = 1;
-              } else {
-                this.registers[FLAG_REGISTER] = 0;
-              }
-              this.registers[x] = ans & 0xFF;
-              this.pc += 2;
+              this.op_8xy4();
               break;
             case 5:
-              x = (opcode & 0x0F00) >> 8;
-              y = (opcode & 0x00F0) >> 4;
-
-              // check for underflow
-              if (this.registers[x] > this.registers[y]) {
-                this.registers[FLAG_REGISTER] = 1;
-              } else {
-                this.registers[FLAG_REGISTER] = 0;
-              }
-              this.registers[x] -= this.registers[y];
-              this.pc += 2;
+              this.op_8xy5();
               break;
             case 6:
-              x = (opcode & 0x0F00) >> 8;
-              this.registers[FLAG_REGISTER] = this.registers[x] & 1;
-              this.registers[x] >>= 1;
-              this.pc += 2;
+              this.op_8xy6();
               break;
             case 7:
-              x = (opcode & 0x0F00) >> 8;
-              y = (opcode & 0x00F0) >> 4;
-              // check for underflow
-              if (this.registers[y] > this.registers[x]) {
-                this.registers[FLAG_REGISTER] = 1;
-              } else {
-                this.registers[FLAG_REGISTER] = 0;
-              }
-              this.registers[x] = this.registers[y] - this.registers[x];
-              this.pc += 2;
+              this.op_8xy7();
               break;
             case 0xE:
-              x = (this.opcode & 0x0F00) >> 8;
-              this.registers[FLAG_REGISTER] = (this.registers[x] & 0x80) >> 7;
-              this.registers[x] <<= 1;
-              this.pc += 2;
+              this.op_8xye();
               break;
             default:
-              console.log("unrecognized opcode");
+              this.op_null();
               break;
           }
           break;
         case 0x9000:
-          x = (opcode & 0x0F00) >> 8;
-          y = (opcode & 0x00F0) >> 4;
-          this.pc += (this.registers[x] !== this.registers[y]) ? 4 : 2;
+          this.op_9xy0();
           break;
         case 0xA000:
-          this.I = (opcode & 0x0FFF);
-          this.pc += 2;
+          this.op_annn();
           break;
         case 0xB000:
-          addr = opcode & 0x0FFF;
-          this.pc = this.registers[0] + addr;
+          this.op_bnnn();
           break;
         case 0xC000:
-          x = (opcode & 0x0F00) >> 8;
-          c = opcode & 0x0FF;
-          this.registers[x] = rand(255) & c;
-          this.pc += 2;
+          this.op_cxnn();
           break;
         case 0xD000: // draw sprite with height n at x, y
-          x = this.registers[(opcode & 0x0F00) >> 8];
-          y = this.registers[(opcode & 0x00F0) >> 4];
-          height = opcode & 0x000F;
-
-          let row, col, byte, pixel;
-
-
-          this.registers[FLAG_REGISTER] = 0;
-
-
-          // update pixels
-          for (row = 0; row < height; ++row) {
-            byte = this.memory[this.I + row]
-            for (col = 0; col < SPRITE_WIDTH; ++col) {
-              pixel = this.display[(y + row) * WIDTH + (x + col)];
-              // sprite pixel is on
-              if ((byte & (0x80 >> col)) !== 0) {
-                // check for collision
-                if (pixel === ON) {
-                  this.registers[FLAG_REGISTER] = 1;
-                }
-                this.display[(y + row) * WIDTH + (x + col)] ^= ON;
-              }
-
-            }
-          }
-          // draw
-          // clear screen
-          this.ctx.fillStyle = "black";
-          this.ctx.fillRect(0, 0, WIDTH, HEIGHT);
-          this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-          this.ctx.scale(SCALE, SCALE);
-
-          // draw pixels
-          for (let i = 0; i < this.display.length; i++) {
-            if (this.display[i] !== 0) {
-              this.ctx.fillStyle = 'white';
-              this.ctx.fillRect(i % WIDTH, Math.floor(i / WIDTH), 1, 1);
-            }
-          }
-
-          this.pc += 2;
+          this.op_dxyn();
           break;
         case 0xE000:
           switch (opcode & 0x00FF) {
             case 0x9E: // skip next instruction if key stored in vx is pressed
-              x = (opcode & 0x0F00) >> 8;
-              this.pc += (this.registers[x] === keyPressed) ? 4 : 2;
+              this.op_ex9e();
               break;
             case 0xA1: // skip next instruction if key stored in vx is not pressed
-              x = (opcode & 0x0F00) >> 8;
-              this.pc += (this.registers[x] !== keyPressed) ? 4 : 2;
+              this.op_exa1();
               break;
             default:
-              console.log("unrecognized opcode");
+              this.op_null();
               break
           }
           break
         case 0xF000:
           switch (opcode & 0x00FF) {
             case  0x07:
-              x = (opcode & 0x0F00) >> 8;
-              this.registers[x] = this.delay_timer;
-              this.pc += 2;
+              this.op_fx07();
               break;
             case 0x0A: // await key press
-              x = (opcode & 0x0F00) >> 8;
-              // key = await waitForKeyPress();
-              this.registers[x] = INPUT_MAP[keyPressed];
-              this.pc += 2;
+              this.op_fx0a();
               break;
             case 0x15:
-              x = (opcode & 0x0F00) >> 8;
-              this.delay_timer = this.registers[x];
-              this.pc += 2;
+              this.op_fx15();
               break;
             case 0x18:
-              x = (opcode & 0x0F00) >> 8;
-              this.sound_timer = this.registers[x];
-              this.pc += 2;
+              this.op_fx18();
               break;
             case 0x1E:
-              x = (opcode & 0x0F00) >> 8;
-              this.I += this.registers[x];
-              this.pc += 2;
+              this.op_fx1e();
               break;
             case 0x29:
-              x = (opcode & 0x0F00) >> 8;
-              this.I = FONTS_START + (FONT_LEN * this.registers[x]);
-              this.pc += 2;
+              this.op_fx29();
               break;
             case 0x33: // store binary-coded decimal representation of Vx
-              x = (opcode & 0x0F00) >> 8;
-              let val = this.registers[x];
-              for (let offset = 2; offset >= 0; offset--) {
-                this.memory[this.I + offset] = val % 10;
-                val = Math.floor(val / 10);
-              }
-              this.pc += 2;
+              this.op_fx33();
               break;
             case 0x55: // dump v0 to vx in memory starting from I
-              x = (opcode & 0x0F00) >> 8;
-              for (let i = 0; i <= this.registers[x]; i++) {
-                this.memory[this.I + i] = this.registers[i];
-              }
-              this.pc += 2;
+              this.op_fx55();
               break;
             case 0x65:// load memory starting from I into v0 to vx
-              x = (opcode & 0x0F00) >> 8;
-              for (let i = 0; i <= this.registers[x]; i++) {
-                this.registers[i] = this.memory[this.I + i];
-              }
-              this.pc += 2;
+              this.op_fx65();
               break;
           }
           break;
         default:
-          console.log(`unrecognized opcode: ${opcode}`)
+          this.op_null();
           break;
       }
       if (this.delay_timer > 0) {
@@ -472,10 +695,14 @@ document.addEventListener("DOMContentLoaded", async function () {
   const fileInput = document.getElementById("romFileInput");
   const resetBtn = document.getElementById("resetBtn");
   const canvas = document.getElementById("display") || null;
-  const cpu = new CPU(canvas);
+  let cpu = null;
 
   resetBtn.addEventListener("click", function () {
-    cpu.reset();
+    if (cpu) {
+      cpu.clear_display();
+      clearInterval(cpu.interval);
+    }
+    cpu = new CPU(canvas);
   })
 
   fileInput.addEventListener("input", function (event) {
@@ -484,6 +711,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (file) {
       const reader = new FileReader();
       reader.onload = async function (e) {
+        if (cpu) {
+          cpu.clear_display();
+          clearInterval(cpu.interval);
+        }
+        cpu = new CPU(canvas);
         const bytes = new Uint8Array(e.target.result);
         await cpu.load_and_run(bytes)
       }
