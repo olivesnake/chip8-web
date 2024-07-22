@@ -1,13 +1,14 @@
 {
-  "name": " ",
-  "version": "0.0.1",
-  "description": "",
+  "name": "chip8web",
+  "version": "1.0.0",
+  "description": "chip 8 emulator in the browser",
   "private": true,
   "keywords": [
-    ""
+    "emulation",
+    "8bit"
   ],
-  "license": "",
-  "author": "",
+  "license": "MIT",
+  "author": "oliver",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "webpack serve --open --config webpack.config.dev.js",

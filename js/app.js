@@ -488,7 +488,7 @@ class CPU {
 
   async cycle() {
     return new Promise(async (resolve) => {
-      let opcode, addr, x, y, c, ans, msb, lsb, height, key;
+      let opcode;
       // fetch
       opcode = this.memory[this.pc] << 8 | this.memory[this.pc + 1];
       this.opcode = this.memory[this.pc] << 8 | this.memory[this.pc + 1];
@@ -679,7 +679,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   window.addEventListener("keydown", function (event) {
     keyPressed = INPUT_MAP[event.key];
   })
-  window.addEventListener("keyup", function (event) {
+  window.addEventListener("keyup", function () {
     keyPressed = null;
   })
   const fileInput = document.getElementById("romFileInput");
