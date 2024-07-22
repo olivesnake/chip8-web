@@ -1,3 +1,6 @@
+"use strict";
+
+
 const NUM_REGISTERS = 16;
 const FLAG_REGISTER = 0xF;
 const INIT_HERTZ = 60; // starting hertz for timer registers
@@ -7,19 +10,46 @@ const PROGRAM_START = 0x200;
 const FONTS_START = 0x50;
 const FONT_LEN = 5; // number of bytes for a font character
 const MEMORY_SIZE = 0x1000;
-const BEEP_SOUND_FILE = "./audio/beep-06.mp3"
+const BEEP_SOUND_FILE = "./audio/beep-06.mp3";
 const SPRITE_WIDTH = 8;
 const SCALE = 10;
 const INTERVAL = Math.floor(1000 / 60);
 // const INTERVAL = 500;
 
+const LOGO_ROM = [
+  0, 224, 96, 0, 97, 0, 98, 8, 162, 32, 64,
+  64, 34, 26, 65, 32, 18, 16, 208, 24, 242,
+  30, 112, 8, 18, 10, 96, 0, 113, 8, 0, 238,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 127, 64, 95, 80, 87, 84, 84, 0,
+  252, 4, 244, 20, 212, 84, 84, 0, 63, 32,
+  47, 40, 43, 42, 42, 0, 254, 2, 250, 10,
+  234, 42, 42, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 84, 84,
+  84, 84, 84, 84, 116, 0, 84, 84, 84,
+  84, 116, 0, 0, 0, 42, 42, 42, 42, 42,
+  42, 59, 0, 42, 42, 42, 42, 42, 42, 238,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 116, 84, 84, 84, 84, 84,
+  84, 84, 0, 0, 116, 84, 84, 84, 84, 84,
+  59, 42, 42, 42, 42, 42, 42, 42, 238, 42,
+  42, 42, 42, 42, 42, 42, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 84, 84,
+  87, 80, 95, 64, 127, 0, 84, 84, 212, 20, 244,
+  4, 252, 0, 42, 42, 43, 40, 47, 32, 63, 0, 42,
+  42, 234, 10, 250, 2, 254, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+]
 
 const INPUT_MAP = {
   "1": 1, "2": 2, "3": 4, "4": 0xC,
-  "q": 4, "w": 5, 'e': 5, 'r': 0xD,
-  'a': 7, 's': 8, 'd': 9, 'f': 0xE,
-  'z': 0xA, 'x': 0, 'c': 0xB, 'v': 0xF
-}
+  "q": 4, "w": 5, "e": 5, "r": 0xD,
+  "a": 7, "s": 8, "d": 9, "f": 0xE,
+  "z": 0xA, "x": 0, "c": 0xB, "v": 0xF
+};
 
 const FONT_SET = [
   0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -38,7 +68,7 @@ const FONT_SET = [
   0xE0, 0x90, 0x90, 0x90, 0xE0, // D
   0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
   0xF0, 0x80, 0xF0, 0x80, 0x80  // F
-]
+];
 
 const sprite_addr = [];
 
@@ -55,23 +85,32 @@ function rand(max) {
   return Math.floor(Math.random() * max);
 }
 
-function waitForKeyPress() {
-  return new Promise(function (resolve) {
-      function onKeyPress(event) {
-        document.removeEventListener("keydown", onKeyPress);
-        resolve(event.key);
-      }
-
-      document.addEventListener('keydown', onKeyPress);
-    }
-  );
-}
 
 const ON = 0xFFFFFFFF;
-const OFF = 0;
 
 class CPU {
   constructor(canvas) {
+    let i;
+    this.canvas = canvas
+    this.ctx = this.canvas.getContext("2d");
+    this.ctx.fillStyle = "black";
+    this.ctx.fillRect(0, 0, WIDTH * SCALE, HEIGHT * SCALE);
+    this.memory = new Uint8Array(MEMORY_SIZE);
+    // load fonts into memory
+    for (i = 0; i < FONT_SET.length; i++) {
+      this.memory[FONTS_START + i] = FONT_SET[i];
+    }
+    this.stack = new Uint16Array(16);
+
+    this.registers = new Uint8Array(NUM_REGISTERS);
+    this.I = 0; // address register
+    this.sp = 0; // stack pointer
+    this.pc = 0; // program counter
+    this.delay_timer = INIT_HERTZ;
+    this.sound_timer = INIT_HERTZ;
+    this.interval = null;
+    this.opcode = 0; // store current opcode
+    this.display = new Uint32Array(WIDTH * HEIGHT);
     /* setup function pointer table */
     this.table = new Array(0xF + 1);
     // opcodes starting with 0
@@ -80,7 +119,6 @@ class CPU {
     this.tableE = new Array(0xF);
     this.tableF = new Array(0x66);
 
-    let i;
     for (i = 0; i <= 0xE; i++) {
       this.table0[i] = this.op_null;
       this.table8[i] = this.op_null;
@@ -131,27 +169,6 @@ class CPU {
     this.table[0xD] = this.op_dxyn;
     this.table[0xE] = this.op_tableE;
     this.table[0xF] = this.op_tableF;
-    this.canvas = canvas
-    this.ctx = this.canvas.getContext("2d");
-    this.ctx.fillStyle = "black";
-    this.ctx.fillRect(0, 0, WIDTH * SCALE, HEIGHT * SCALE);
-    this.memory = new Uint8Array(MEMORY_SIZE);
-    // load fonts into memory
-    for (let i = 0; i < FONT_SET.length; i++) {
-      this.memory[FONTS_START + i] = FONT_SET[i];
-    }
-    this.stack = new Uint16Array(16);
-
-    this.registers = new Uint8Array(NUM_REGISTERS);
-    this.I = 0; // address register
-    this.sp = 0; // stack pointer
-    this.pc = 0; // program counter
-    this.delay_timer = INIT_HERTZ;
-    this.sound_timer = INIT_HERTZ;
-    this.interval = null;
-    this.opcode = 0; // store current opcode
-    this.display = new Uint32Array(WIDTH * HEIGHT);
-
 
   }
 
@@ -469,33 +486,6 @@ class CPU {
   }
 
 
-  async cycle2() {
-    return new Promise((resolve) => {
-      this.opcode = this.memory[this.pc] << 8 | this.memory[this.pc + 1];
-      // execute
-      this.pc += 2;
-      console.log(`opcode: ${this.opcode.toString(16).padStart(4, '0')}`);
-      try {
-        this.table[(this.opcode & 0xF000) >> 12]();
-      } catch (err) {
-        console.log(`an error occurred: ${err}`);
-      }
-
-      if (this.delay_timer > 0) {
-        this.delay_timer--;
-      }
-      if (this.sound_timer > 0) {
-        this.sound_timer--;
-        if (this.sound_timer === 1) {
-          playSound()
-        }
-      }
-
-      resolve();
-    })
-
-  }
-
   async cycle() {
     return new Promise(async (resolve) => {
       let opcode, addr, x, y, c, ans, msb, lsb, height, key;
@@ -695,7 +685,8 @@ document.addEventListener("DOMContentLoaded", async function () {
   const fileInput = document.getElementById("romFileInput");
   const resetBtn = document.getElementById("resetBtn");
   const canvas = document.getElementById("display") || null;
-  let cpu = null;
+  let cpu = new CPU(canvas);
+  await cpu.load_and_run(LOGO_ROM)
 
   resetBtn.addEventListener("click", function () {
     if (cpu) {
@@ -706,7 +697,6 @@ document.addEventListener("DOMContentLoaded", async function () {
   })
 
   fileInput.addEventListener("input", function (event) {
-    // console.log(fileInput.value);
     const file = event.target.files[0];
     if (file) {
       const reader = new FileReader();

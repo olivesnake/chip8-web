@@ -13,15 +13,82 @@
 </head>
 
 <body>
-<form>
-  <input type="file" name="romFile" id="romFileInput">
-  <button type="reset" id="resetBtn">reset</button>
-</form>
+<main>
+  <h1>CHIP-8 Emulator</h1>
 
-<br>
 
-<canvas id="display" width="640" height="320"></canvas>
-<!--<img src="img/cosmac-vip-keypad.png" alt="keypad" height="726" width="747" style="height: 250px; width: 250px;">-->
+  <canvas id="display" width="640" height="320" style="margin-bottom: 3rem;"></canvas>
+  <br>
+  <form>
+    <input type="file" name="romFile" id="romFileInput">
+    <button type="reset" id="resetBtn">reset</button>
+  </form>
+
+  <h2>ROMs to Try</h2>
+  <table>
+    <tr>
+      <th>rom</th>
+      <th>md5sum</th>
+    </tr>
+    <tr>
+      <td>
+        <a href="/roms/Airplane.ch8" download="airplane.ch8">Airplane</a>
+      </td>
+      <td>
+        02c2993360d186d3ae265ee7388481de
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/roms/Cave.ch8" download="cave.ch8">Cave</a>
+      </td>
+      <td>
+        bea7fdce1ef1733f9298dbbe2257cb9c
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/roms/Clock%20Program%20%5BBill%20Fisher,%201981%5D.ch8" download="clock.ch8">Clock</a>
+      </td>
+      <td>
+        eb3b37d79a3b1492d875a15435d67769
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/roms/Maze%20%5BDavid%20Winter,%20199x%5D.ch8" download="maze.ch8">Maze</a>
+      </td>
+      <td>
+        ea281bb152c94c22b9855a796ff982bd
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/roms/Particle%20Demo%20%5BzeroZshadow,%202008%5D.ch8" download="particle.ch8">Particle</a>
+      </td>
+      <td>
+        762f91bb5fa02e1cda5ee23b23017f4f
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/roms/Pong%20(1%20player).ch8" download="pong.ch8">Pong</a>
+      </td>
+      <td>
+        d7c0a76147c5f16bb498aa410f1f21f2
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/roms/Tetris%20%5BFran%20Dachille,%201991%5D%20(1).ch8" download="tetris.ch8">Tetris</a>
+      </td>
+      <td>
+        aef4fc8c2a5e8431f5e0736ab281f2ee
+      </td>
+    </tr>
+  </table>
+</main>
 <script src="js/app.js"></script>
+<footer>it ain't perfect, but it works for a good amount of roms</footer>
 </body>
 </html>
