@@ -70,15 +70,16 @@ const OFF = 0;
 
 class CPU {
   constructor(canvas) {
+    this.opcode_table = [];
     this.canvas = canvas
     this.ctx = this.canvas.getContext("2d");
+    this.ctx.fillStyle = "black";
+    this.ctx.fillRect(0, 0, WIDTH * SCALE, HEIGHT * SCALE);
     this.memory = new Uint8Array(MEMORY_SIZE);
     // load fonts into memory
     for (let i = 0; i < FONT_SET.length; i++) {
       this.memory[FONTS_START + i] = FONT_SET[i];
     }
-
-
     this.stack = new Uint16Array(16);
 
     this.registers = new Uint8Array(NUM_REGISTERS);
@@ -88,8 +89,8 @@ class CPU {
     this.delay_timer = INIT_HERTZ;
     this.sound_timer = INIT_HERTZ;
     this.interval = null;
+    this.opcode = 0; // store current opcode
     this.display = new Uint32Array(WIDTH * HEIGHT);
-    this.video = new Uint8ClampedArray(WIDTH * HEIGHT);
 
   }
 
@@ -126,22 +127,32 @@ class CPU {
   update() {
   }
 
+  op_00e0() {
+    for (let i = 0; i < this.display.length; i++) {
+      this.display[i] = 0;
+    }
+  }
+
+  op_00ee() {
+    this.pc = this.stack[--this.sp];
+  }
+
   async cycle() {
     return new Promise(async (resolve) => {
       let opcode, addr, x, y, c, ans, msb, lsb, height, key;
       opcode = this.memory[this.pc] << 8 | this.memory[this.pc + 1];
+      this.opcode = opcode;
       switch (opcode & 0xF000) {
         case 0x0000:
           switch (opcode & 0x0F00) {
             case 0:
               switch (opcode & 0x000F) {
                 case 0xE:
-                  this.clear_display()
-                  this.pc += 2;
+                  this.op_00ee();
                   break
                 case 0: // return from subroutine
-                  addr = this.stack[--this.sp]; // pop from stack
-                  this.pc = addr;
+                  this.op_00e0();
+                  this.pc += 2;
                   break
                 default:
                   console.log(`unrecognized opcode`)
@@ -223,9 +234,9 @@ class CPU {
               ans = Number(this.registers[x]) + Number(this.registers[y]);
               // check for overflow
               if (ans > 255) {
-                this.registers[FLAG_REGISTER] = 0;
-              } else {
                 this.registers[FLAG_REGISTER] = 1;
+              } else {
+                this.registers[FLAG_REGISTER] = 0;
               }
               this.registers[x] = ans & 0xFF;
               this.pc += 2;
@@ -233,39 +244,38 @@ class CPU {
             case 5:
               x = (opcode & 0x0F00) >> 8;
               y = (opcode & 0x00F0) >> 4;
-              this.registers[x] -= this.registers[y];
+
               // check for underflow
-              if (this.registers[x] >= this.registers[y]) {
+              if (this.registers[x] > this.registers[y]) {
                 this.registers[FLAG_REGISTER] = 1;
               } else {
                 this.registers[FLAG_REGISTER] = 0;
               }
+              this.registers[x] -= this.registers[y];
               this.pc += 2;
               break;
             case 6:
               x = (opcode & 0x0F00) >> 8;
-              lsb = this.registers[x] & 1;
+              this.registers[FLAG_REGISTER] = this.registers[x] & 1;
               this.registers[x] >>= 1;
-              this.registers[FLAG_REGISTER] = lsb;
               this.pc += 2;
               break;
             case 7:
               x = (opcode & 0x0F00) >> 8;
               y = (opcode & 0x00F0) >> 4;
-              this.registers[x] = this.registers[y] - this.registers[x];
               // check for underflow
-              if (this.registers[y] >= this.registers[x]) {
+              if (this.registers[y] > this.registers[x]) {
                 this.registers[FLAG_REGISTER] = 1;
               } else {
                 this.registers[FLAG_REGISTER] = 0;
               }
+              this.registers[x] = this.registers[y] - this.registers[x];
               this.pc += 2;
               break;
             case 0xE:
-              x = (opcode & 0x0F00) >> 8;
-              msb = this.registers[x] & 0x80;
+              x = (this.opcode & 0x0F00) >> 8;
+              this.registers[FLAG_REGISTER] = (this.registers[x] & 0x80) >> 7;
               this.registers[x] <<= 1;
-              this.registers[FLAG_REGISTER] = msb;
               this.pc += 2;
               break;
             default:
@@ -279,8 +289,7 @@ class CPU {
           this.pc += (this.registers[x] !== this.registers[y]) ? 4 : 2;
           break;
         case 0xA000:
-          addr = opcode & 0x0FFF;
-          this.I = addr;
+          this.I = (opcode & 0x0FFF);
           this.pc += 2;
           break;
         case 0xB000:
@@ -294,8 +303,8 @@ class CPU {
           this.pc += 2;
           break;
         case 0xD000: // draw sprite with height n at x, y
-          x = this.registers[(opcode & 0x0F00) >> 8] % WIDTH;
-          y = this.registers[(opcode & 0x00F0) >> 4] % HEIGHT;
+          x = this.registers[(opcode & 0x0F00) >> 8];
+          y = this.registers[(opcode & 0x00F0) >> 4];
           height = opcode & 0x000F;
 
           let row, col, byte, pixel;
@@ -308,7 +317,6 @@ class CPU {
           for (row = 0; row < height; ++row) {
             byte = this.memory[this.I + row]
             for (col = 0; col < SPRITE_WIDTH; ++col) {
-
               pixel = this.display[(y + row) * WIDTH + (x + col)];
               // sprite pixel is on
               if ((byte & (0x80 >> col)) !== 0) {
@@ -362,8 +370,8 @@ class CPU {
               break;
             case 0x0A: // await key press
               x = (opcode & 0x0F00) >> 8;
-              key = await waitForKeyPress();
-              this.registers[x] = INPUT_MAP[key];
+              // key = await waitForKeyPress();
+              this.registers[x] = INPUT_MAP[keyPressed];
               this.pc += 2;
               break;
             case 0x15:
