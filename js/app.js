@@ -9,6 +9,7 @@ const FONT_LEN = 5; // number of bytes for a font character
 const MEMORY_SIZE = 0x1000;
 const BEEP_SOUND_FILE = "./audio/beep-06.mp3"
 const SPRITE_WIDTH = 8;
+const SCALE = 10;
 
 
 const INPUT_MAP = {
@@ -315,22 +316,26 @@ class CPU {
                 if (pixel === ON) {
                   this.registers[FLAG_REGISTER] = 1;
                 }
-                console.log((y + row) * WIDTH + (x + col))
                 this.display[(y + row) * WIDTH + (x + col)] ^= ON;
               }
 
             }
           }
-          console.log(this.display)
+          // draw
+          // clear screen
+          this.ctx.fillStyle = "black";
+          this.ctx.fillRect(0, 0, WIDTH, HEIGHT);
+          this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+          this.ctx.scale(SCALE, SCALE);
 
-          this.ctx.fillStyle = 'white'
-          this.ctx.fillRect(
-            x,
-            y,
-            1,
-            height
-          )
-          // this.draw(x, y, n)
+          // draw pixels
+          for (let i = 0; i < this.display.length; i++) {
+            if (this.display[i] !== 0) {
+              this.ctx.fillStyle = 'white';
+              this.ctx.fillRect(i % WIDTH, Math.floor(i / WIDTH), 1, 1);
+            }
+          }
+
           this.pc += 2;
           break;
         case 0xE000:
