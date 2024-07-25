@@ -70,9 +70,6 @@ const FONT_SET = [
   0xF0, 0x80, 0xF0, 0x80, 0x80  // F
 ];
 
-const sprite_addr = [];
-
-let keys = new Array(16); // hex keyboard
 
 let keyPressed = null;
 
