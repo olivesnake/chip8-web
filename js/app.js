@@ -75,7 +75,10 @@ let keyPressed = null;
 
 function playSound() {
   const audio = new Audio(BEEP_SOUND_FILE);
-  audio.play();
+  audio.preload = "metadata";
+  audio.addEventListener("loadedmetadata", function () {
+    // audio.play();
+  })
 }
 
 function rand(max) {
@@ -343,8 +346,8 @@ class CPU {
   }
 
   op_dxyn() {
-    let x = this.registers[(this.opcode & 0x0F00) >> 8];
-    let y = this.registers[(this.opcode & 0x00F0) >> 4];
+    let x = this.registers[(this.opcode & 0x0F00) >> 8] % WIDTH;
+    let y = this.registers[(this.opcode & 0x00F0) >> 4] % HEIGHT;
     let height = this.opcode & 0x000F;
 
     let row, col, byte, pixel;
@@ -405,7 +408,11 @@ class CPU {
 
   op_fx0a() {
     let x = (this.opcode & 0x0F00) >> 8;
-    this.registers[x] = INPUT_MAP[keyPressed];
+    if (!keyPressed) {
+      self.pc -= 2;
+    } else {
+      this.registers[x] = INPUT_MAP[keyPressed];
+    }
   }
 
   op_fx15() {
@@ -676,20 +683,25 @@ document.addEventListener("DOMContentLoaded", async function () {
   window.addEventListener("keydown", function (event) {
     keyPressed = INPUT_MAP[event.key];
   })
-  window.addEventListener("keyup", function () {
-    keyPressed = null;
-  })
+  // window.addEventListener("keyup", function () {
+  //   keyPressed = null;
+  // })
   const fileInput = document.getElementById("romFileInput");
   const resetBtn = document.getElementById("resetBtn");
   const canvas = document.getElementById("display") || null;
+  const codeForm = document.getElementById("sourceCodeForm");
   let cpu = new CPU(canvas);
-  await cpu.load_and_run(LOGO_ROM)
+  await cpu.load_and_run(LOGO_ROM);
 
-  resetBtn.addEventListener("click", function () {
+  function reset() {
     if (cpu) {
       cpu.clear_display();
       clearInterval(cpu.interval);
     }
+  }
+
+  resetBtn.addEventListener("click", function () {
+    reset();
     cpu = new CPU(canvas);
   })
 
@@ -698,16 +710,28 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (file) {
       const reader = new FileReader();
       reader.onload = async function (e) {
-        if (cpu) {
-          cpu.clear_display();
-          clearInterval(cpu.interval);
-        }
+        reset();
         cpu = new CPU(canvas);
         const bytes = new Uint8Array(e.target.result);
         await cpu.load_and_run(bytes)
       }
       reader.readAsArrayBuffer(file);
     }
+  })
+
+  codeForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const raw = document.getElementById("sourceCode").value;
+    const lines = raw.split('\n');
+    const text = lines.join('');
+    let instructions = []
+    for (let i = 0; i < text.length; i += 2) {
+      instructions.push(text.slice(i, i + 2));
+    }
+    let program = instructions.map((v) => parseInt(v, 16));
+    reset();
+    cpu = new CPU(canvas);
+    await cpu.load_and_run(program);
   })
 
 

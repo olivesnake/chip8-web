@@ -23,8 +23,27 @@
     <input type="file" name="romFile" id="romFileInput">
     <button type="reset" id="resetBtn">reset</button>
   </form>
+  <div>
+    <h2>Write a Program</h2>
+    <p>
+      write your own program and click run.
+      <a href="https://en.wikipedia.org/wiki/CHIP-8#Opcode_table" target="_parent">chip-8 opcode reference</a>
+    </p>
+    <form id="sourceCodeForm">
+      <textarea
+        name="sourceCodeInput"
+        id="sourceCode"
+        cols="50"
+        rows="10"
+        placeholder="00e0
+f029"
+      ></textarea>
+      <br>
+      <button type="submit">run</button>
+    </form>
+  </div>
 
-  <h2>ROMs to Try</h2>
+  <h2>or Try a ROM</h2>
   <table>
     <tr>
       <th>rom</th>
@@ -89,7 +108,8 @@
   </table>
 </main>
 <script src="js/app.js"></script>
-<footer>it ain't perfect, but it works for a good amount of roms<br><a href="https://github.com/olivesnake/chip8-web" target="_parent">https://github.com/olivesnake/chip8-web</a>
+<footer>it ain't perfect, but it works for a good amount of roms<br><a href="https://github.com/olivesnake/chip8-web"
+                                                                       target="_parent">https://github.com/olivesnake/chip8-web</a>
 </footer>
 </body>
 </html>
